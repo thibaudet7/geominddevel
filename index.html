@@ -47,9 +47,8 @@
             width: 310px; min-width: 310px;
             background: #1e2a38; color: #ecf0f1;
             overflow-y: auto; padding: 12px;
-            z-index: 1000; transition: margin-left 0.3s;
+            z-index: 1000;
         }
-        #sidebar.collapsed { margin-left: -310px; }
 
         #sidebar h2 {
             font-size: 13px; margin: 16px 0 8px; padding-bottom: 5px;
@@ -204,8 +203,13 @@
 
         @media (max-width: 768px) {
             #toggle-sidebar-btn { display: block; }
-            #sidebar { position: absolute; left: 0; top: 52px; height: calc(100vh - 52px); z-index: 1001; width: 85vw; min-width: auto; }
-            #sidebar.collapsed { margin-left: -85vw; }
+            #sidebar {
+                position: fixed; left: 0; top: 52px; bottom: 0; z-index: 1100;
+                width: 85vw; min-width: auto;
+                overflow-y: auto; -webkit-overflow-scrolling: touch;
+                transform: translateX(0); transition: transform 0.3s ease;
+            }
+            #sidebar.collapsed { transform: translateX(-100%); }
             #header h1 { font-size: 14px; }
             #header p { display: none; }
             #gps-panel { left: 10px; right: 10px; max-width: none; }
@@ -685,6 +689,17 @@
         let measurePolygon = null;
         let measureMarkers = [];
 
+        function setLayersInteractive(enabled) {
+            [regionsLayer, departementsLayer, arrondissementsLayer, cecLayer].forEach(group => {
+                group.eachLayer(layer => {
+                    if (layer.eachLayer) {
+                        layer.eachLayer(l => { if (l.getElement) { const el = l.getElement(); if (el) el.style.pointerEvents = enabled ? '' : 'none'; } });
+                    }
+                    if (layer.getElement) { const el = layer.getElement(); if (el) el.style.pointerEvents = enabled ? '' : 'none'; }
+                });
+            });
+        }
+
         function startMeasure(mode) {
             clearMeasure();
             measureMode = mode;
@@ -693,6 +708,8 @@
             document.getElementById('btn-measure-dist').classList.toggle('active', mode === 'distance');
             document.getElementById('btn-measure-area').classList.toggle('active', mode === 'area');
             map.getContainer().style.cursor = 'crosshair';
+            map.closePopup();
+            setLayersInteractive(false);
         }
 
         function clearMeasure() {
@@ -706,6 +723,7 @@
             document.getElementById('btn-measure-dist').classList.remove('active');
             document.getElementById('btn-measure-area').classList.remove('active');
             map.getContainer().style.cursor = '';
+            setLayersInteractive(true);
         }
 
         function formatDistance(meters) {
@@ -779,6 +797,7 @@
                 map.getContainer().style.cursor = '';
                 document.getElementById('btn-measure-dist').classList.remove('active');
                 document.getElementById('btn-measure-area').classList.remove('active');
+                setLayersInteractive(true);
             }
         });
 
