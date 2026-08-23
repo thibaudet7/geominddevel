@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GéoMINDEVEL - Centres d'État Civil du Cameroun</title>
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- Supabase JS -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow: hidden; height: 100vh; }
+
+        #header {
+            background: linear-gradient(135deg, #1a5632 0%, #2d8659 100%);
+            color: white;
+            padding: 10px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+            z-index: 1001;
+            position: relative;
+        }
+        #header h1 { font-size: 17px; font-weight: 700; }
+        #header p { font-size: 11px; opacity: 0.85; margin-top: 2px; }
+        .header-right { display: flex; align-items: center; gap: 10px; }
+        .header-right span { font-size: 11px; opacity: 0.9; }
+        #toggle-sidebar-btn {
+            display: none; background: none; border: 2px solid white;
+            color: white; padding: 5px 9px; border-radius: 4px; cursor: pointer; font-size: 14px;
+        }
+
+        #container { display: flex; height: calc(100vh - 52px); }
+
+        #sidebar {
+            width: 310px; min-width: 310px;
+            background: #1e2a38; color: #ecf0f1;
+            overflow-y: auto; padding: 12px;
+            z-index: 1000; transition: margin-left 0.3s;
+        }
+        #sidebar.collapsed { margin-left: -310px; }
+
+        #sidebar h2 {
+            font-size: 13px; margin: 16px 0 8px; padding-bottom: 5px;
+            border-bottom: 2px solid #1a5632; color: #4CAF50;
+            text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        #sidebar h2:first-child { margin-top: 0; }
+
+        .filter-group { margin-bottom: 10px; }
+        .filter-group label { display: block; margin-bottom: 3px; font-size: 11px; font-weight: 500; color: #bdc3c7; }
+        .filter-group input[type="text"], .filter-group select {
+            width: 100%; padding: 6px 8px; border: 1px solid #34495e;
+            border-radius: 4px; font-size: 12px; background: #2c3e50; color: white;
+        }
+        .filter-group input:focus, .filter-group select:focus { outline: none; border-color: #4CAF50; }
+
+        .checkbox-group { display: flex; flex-wrap: wrap; gap: 5px; }
+        .checkbox-group label {
+            display: flex; align-items: center; gap: 4px; font-size: 11px;
+            cursor: pointer; color: #ecf0f1; background: #2c3e50; padding: 3px 7px; border-radius: 3px;
+        }
+        .checkbox-group input[type="checkbox"] { width: 13px; height: 13px; }
+
+        .btn {
+            padding: 7px 10px; border: none; border-radius: 4px; cursor: pointer;
+            font-size: 11px; font-weight: 600; width: 100%; margin-top: 6px;
+            display: flex; align-items: center; justify-content: center; gap: 5px;
+        }
+        .btn-primary { background: #1a5632; color: white; }
+        .btn-primary:hover { background: #2d8659; }
+        .btn-danger { background: #c0392b; color: white; }
+        .btn-danger:hover { background: #e74c3c; }
+        .btn-secondary { background: #34495e; color: white; }
+        .btn-secondary:hover { background: #4a6278; }
+
+        #stats {
+            background: rgba(26,86,50,0.25); padding: 10px; border-radius: 6px;
+            border: 1px solid rgba(76,175,80,0.3);
+        }
+        #stats .stat-number { font-size: 26px; font-weight: bold; color: #4CAF50; }
+        #stats .stat-label { font-size: 10px; color: #bdc3c7; }
+        #stats .stat-detail { font-size: 10px; color: #95a5a6; margin-top: 4px; line-height: 1.5; }
+
+        .search-wrapper { position: relative; }
+        #search-suggestions {
+            position: absolute; top: 100%; left: 0; right: 0; z-index: 9999;
+            background: #2c3e50; border: 1px solid #4a6278; border-top: none;
+            border-radius: 0 0 4px 4px; max-height: 200px; overflow-y: auto;
+            display: none;
+        }
+        #search-suggestions .suggestion {
+            padding: 6px 10px; font-size: 12px; color: #ecf0f1; cursor: pointer;
+            border-bottom: 1px solid #3a4f63;
+        }
+        #search-suggestions .suggestion:hover,
+        #search-suggestions .suggestion.active {
+            background: #1a5632; color: #fff;
+        }
+        #search-suggestions .suggestion .hint {
+            font-size: 10px; color: #95a5a6; margin-left: 6px;
+        }
+
+        .layer-toggles label {
+            display: flex; align-items: center; gap: 5px;
+            font-size: 11px; cursor: pointer; margin: 3px 0; color: #ecf0f1;
+        }
+        .layer-toggles input[type="checkbox"] { width: 14px; height: 14px; }
+
+        #map-container { flex: 1; position: relative; }
+        #map { width: 100%; height: 100%; }
+
+        /* LEGEND - semi-transparent & collapsible */
+        #legend {
+            position: absolute; bottom: 25px; right: 10px;
+            background: rgba(255,255,255,0.88); backdrop-filter: blur(4px);
+            padding: 10px 13px; border-radius: 6px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3); z-index: 999;
+            font-size: 11px; max-width: 210px; transition: all 0.3s;
+        }
+        #legend.collapsed { padding: 6px 10px; }
+        #legend.collapsed .legend-body { display: none; }
+        #legend-toggle {
+            cursor: pointer; float: right; font-size: 14px; color: #666;
+            background: none; border: none; padding: 0; line-height: 1;
+        }
+        #legend h3 { font-size: 12px; margin-bottom: 6px; color: #1a5632; font-weight: 700; }
+        .legend-section { margin-bottom: 6px; }
+        .legend-section strong { font-size: 10px; color: #555; }
+        .legend-item { display: flex; align-items: center; margin: 3px 0; }
+        .legend-circle {
+            width: 11px; height: 11px; border-radius: 50%; margin-right: 7px;
+            border: 1.5px solid white; box-shadow: 0 0 2px rgba(0,0,0,0.4);
+        }
+        .legend-line { width: 24px; height: 0; margin-right: 7px; flex-shrink: 0; }
+
+        /* MEASURE TOOL */
+        #measure-panel {
+            position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+            background: rgba(255,255,255,0.95); backdrop-filter: blur(4px);
+            padding: 8px 15px; border-radius: 6px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3); z-index: 2000;
+            font-size: 12px; display: none; align-items: center; gap: 10px;
+        }
+        #measure-panel.active { display: flex; }
+        #measure-panel button {
+            padding: 4px 10px; border: none; border-radius: 3px;
+            cursor: pointer; font-size: 11px; font-weight: 600;
+        }
+        #measure-btn-distance { background: #2196F3; color: white; }
+        #measure-btn-area { background: #9C27B0; color: white; }
+        #measure-btn-clear { background: #f44336; color: white; }
+        #measure-result { font-weight: 600; color: #333; min-width: 100px; }
+
+        .measure-toolbar {
+            position: absolute; top: 80px; right: 10px; z-index: 2000;
+        }
+        .measure-toolbar button {
+            display: block; width: 36px; height: 36px; margin-bottom: 4px;
+            background: white; border: 2px solid rgba(0,0,0,0.2); border-radius: 4px;
+            cursor: pointer; font-size: 14px; color: #333; box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+        }
+        .measure-toolbar button:hover { background: #f0f0f0; }
+        .measure-toolbar button.active { background: #1a5632; color: white; border-color: #1a5632; }
+
+        #gps-results { margin-top: 8px; max-height: 180px; overflow-y: auto; }
+        .gps-result-item {
+            background: rgba(52,152,219,0.15); border: 1px solid rgba(52,152,219,0.3);
+            border-radius: 4px; padding: 6px; margin-bottom: 5px; font-size: 10px; line-height: 1.4;
+        }
+        .gps-result-item strong { color: #3498db; }
+        .gps-result-item .distance { color: #e67e22; font-weight: 600; }
+
+        .loading-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.6); display: flex;
+            align-items: center; justify-content: center; z-index: 10000;
+        }
+        .loading-box { background: white; padding: 25px 35px; border-radius: 10px; text-align: center; }
+        .loading-spinner {
+            border: 4px solid #e0e0e0; border-top: 4px solid #1a5632;
+            border-radius: 50%; width: 36px; height: 36px;
+            animation: spin 0.8s linear infinite; margin: 0 auto 12px;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .loading-box p { font-size: 13px; color: #333; }
+
+        .popup-content { font-size: 12px; max-width: 280px; }
+        .popup-content h4 { color: #1a5632; margin-bottom: 5px; font-size: 13px; border-bottom: 1px solid #eee; padding-bottom: 3px; }
+        .popup-content table { width: 100%; border-collapse: collapse; }
+        .popup-content td { padding: 2px 4px; vertical-align: top; font-size: 11px; }
+        .popup-content td:first-child { font-weight: 600; color: #555; white-space: nowrap; padding-right: 6px; }
+
+        @media (max-width: 768px) {
+            #toggle-sidebar-btn { display: block; }
+            #sidebar { position: absolute; left: 0; top: 52px; height: calc(100vh - 52px); z-index: 1001; width: 85vw; min-width: auto; }
+            #sidebar.collapsed { margin-left: -85vw; }
+            #header h1 { font-size: 14px; }
+            #header p { display: none; }
+            #gps-panel { left: 10px; right: 10px; max-width: none; }
+            #legend { max-width: 200px; font-size: 10px; }
+        }
+    </style>
+</head>
+<body>
+    <div id="header">
+        <div>
+            <h1><i class="fas fa-map-marked-alt"></i> GéoMINDEVEL</h1>
+            <p>Centres d'État Civil du Cameroun — MINDEVEL</p>
+        </div>
+        <div class="header-right">
+            <span id="loading-status"></span>
+            <button id="toggle-sidebar-btn" onclick="document.getElementById('sidebar').classList.toggle('collapsed')"><i class="fas fa-bars"></i></button>
+        </div>
+    </div>
+
+    <div id="container">
+        <div id="sidebar">
+            <div id="stats">
+                <div class="stat-number" id="total-cec">—</div>
+                <div class="stat-label">Centres d'État Civil affichés</div>
+                <div class="stat-detail" id="type-stats"></div>
+                <div class="stat-detail" id="filter-info"></div>
+            </div>
+
+            <h2><i class="fas fa-filter"></i> Filtres</h2>
+            <div class="filter-group">
+                <label><i class="fas fa-search"></i> Rechercher un CEC</label>
+                <div class="search-wrapper">
+                    <input type="text" id="search-cec" placeholder="Tapez un nom..." autocomplete="off">
+                    <div id="search-suggestions"></div>
+                </div>
+            </div>
+            <div class="filter-group">
+                <label>Région</label>
+                <select id="filter-region"><option value="">— Toutes les régions —</option></select>
+            </div>
+            <div class="filter-group">
+                <label>Département</label>
+                <select id="filter-departement"><option value="">— Tous les départements —</option></select>
+            </div>
+            <div class="filter-group">
+                <label>Commune / Arrondissement</label>
+                <select id="filter-commune"><option value="">— Toutes les communes —</option></select>
+            </div>
+            <div class="filter-group">
+                <label>Type de CEC</label>
+                <div class="checkbox-group">
+                    <label><input type="checkbox" class="type-filter" value="Principal" checked> Principal</label>
+                    <label><input type="checkbox" class="type-filter" value="Secondaire" checked> Secondaire</label>
+                    <label><input type="checkbox" class="type-filter" value="C.U." checked> C.U.</label>
+                </div>
+            </div>
+            <button class="btn btn-danger" onclick="resetFilters()"><i class="fas fa-undo"></i> Réinitialiser</button>
+
+            <h2><i class="fas fa-layer-group"></i> Couches</h2>
+            <div class="layer-toggles">
+                <label><input type="checkbox" id="toggle-regions" checked onchange="toggleLayer('regions')"> Régions</label>
+                <label><input type="checkbox" id="toggle-departements" onchange="toggleLayer('departements')"> Départements</label>
+                <label><input type="checkbox" id="toggle-arrondissements" onchange="toggleLayer('arrondissements')"> Arrondissements</label>
+                <label><input type="checkbox" id="toggle-cec" checked onchange="toggleLayer('cec')"> Centres d'État Civil</label>
+            </div>
+
+            <h2><i class="fas fa-location-crosshairs"></i> Géolocalisation</h2>
+            <button class="btn btn-primary" onclick="getUserLocation()"><i class="fas fa-crosshairs"></i> Ma position GPS</button>
+            <div class="filter-group" style="margin-top:8px;">
+                <label>CEC les plus proches</label>
+                <select id="closest-count">
+                    <option value="3">3 plus proches</option>
+                    <option value="5" selected>5 plus proches</option>
+                    <option value="10">10 plus proches</option>
+                </select>
+            </div>
+            <button class="btn btn-secondary" onclick="findClosestCEC()"><i class="fas fa-route"></i> Trouver les CEC proches</button>
+            <div id="gps-results"></div>
+        </div>
+
+        <div id="map-container">
+            <div id="map"></div>
+
+            <!-- Measure toolbar -->
+            <div class="measure-toolbar">
+                <button id="btn-measure-dist" title="Mesurer une distance" onclick="startMeasure('distance')"><i class="fas fa-ruler"></i></button>
+                <button id="btn-measure-area" title="Mesurer une superficie" onclick="startMeasure('area')"><i class="fas fa-draw-polygon"></i></button>
+                <button id="btn-measure-clear" title="Effacer les mesures" onclick="clearMeasure()"><i class="fas fa-trash"></i></button>
+            </div>
+
+            <!-- Measure result display -->
+            <div id="measure-panel">
+                <span id="measure-result">—</span>
+                <button id="measure-btn-clear" onclick="clearMeasure()">Effacer</button>
+            </div>
+
+            <!-- Legend -->
+            <div id="legend">
+                <button id="legend-toggle" onclick="toggleLegend()" title="Réduire/Agrandir"><i class="fas fa-chevron-down"></i></button>
+                <h3><i class="fas fa-list"></i> Légende</h3>
+                <div class="legend-body">
+                    <div class="legend-section">
+                        <strong>CEC par type :</strong>
+                        <div class="legend-item"><div class="legend-circle" style="background:#2196F3;"></div> Principal</div>
+                        <div class="legend-item"><div class="legend-circle" style="background:#FF9800;"></div> Secondaire</div>
+                        <div class="legend-item"><div class="legend-circle" style="background:#f44336;"></div> C.U.</div>
+                    </div>
+                    <div class="legend-section">
+                        <strong>Limites administratives :</strong>
+                        <div class="legend-item"><div class="legend-line" style="border-top: 3px solid #d32f2f; width:24px;"></div> Régions</div>
+                        <div class="legend-item"><div class="legend-line" style="border-top: 2px dashed #212121; width:24px;"></div> Départements</div>
+                        <div class="legend-item"><div class="legend-line" style="border-top: 2px dashed #7B1FA2; width:24px;"></div> Arrondissements</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ===== CONFIG =====
+        const SUPABASE_URL = 'https://hrlufnjhwhgddxkpyzst.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhybHVmbmpod2hnZGR4a3B5enN0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI3MzIwMzcsImV4cCI6MjA2ODMwODAzN30.0gMYonFDAU84i3boEIKZDK4OQhDrAXXJySGDa80wTZ8';
+        const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // ===== MAP =====
+        const map = L.map('map', { zoomControl: true }).setView([7.37, 12.35], 6);
+
+        const osmTiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+            maxZoom: 19
+        }).addTo(map);
+
+        const googleHybrid = L.tileLayer('https://{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}', {
+            subdomains: ['mt0','mt1','mt2','mt3'],
+            attribution: '&copy; Google', maxZoom: 20
+        });
+
+        L.control.layers({ "OpenStreetMap": osmTiles, "Google Satellite": googleHybrid }, null, { position: 'topright' }).addTo(map);
+
+        // Layers with proper z-index ordering:
+        // Regions (bottom) -> Departments -> Arrondissements -> CEC (top)
+        const regionsLayer = L.layerGroup().addTo(map);
+        const departementsLayer = L.layerGroup();
+        const arrondissementsLayer = L.layerGroup();
+        const cecLayer = L.layerGroup().addTo(map);
+        const closestLines = L.layerGroup().addTo(map);
+        const measureLayer = L.layerGroup().addTo(map);
+
+        // Ensure CEC pane is above overlays for popup priority
+        map.createPane('cecPane');
+        map.getPane('cecPane').style.zIndex = 650;
+        map.createPane('measurePane');
+        map.getPane('measurePane').style.zIndex = 700;
+
+        let userMarker = null, userPosition = null;
+        let allCEC = [], allRegions = [], allDepartements = [], allArrondissements = [];
+        let filteredCEC = [];
+
+        // ===== LOADING =====
+        function showLoading(msg) {
+            document.getElementById('loading-status').textContent = msg || '';
+            if (!document.getElementById('loading-overlay')) {
+                const el = document.createElement('div');
+                el.id = 'loading-overlay'; el.className = 'loading-overlay';
+                el.innerHTML = `<div class="loading-box"><div class="loading-spinner"></div><p>${msg||'Chargement...'}</p></div>`;
+                document.body.appendChild(el);
+            }
+        }
+        function hideLoading() {
+            document.getElementById('loading-status').textContent = '';
+            const el = document.getElementById('loading-overlay');
+            if (el) el.remove();
+        }
+
+        // ===== LEGEND TOGGLE =====
+        function toggleLegend() {
+            const legend = document.getElementById('legend');
+            legend.classList.toggle('collapsed');
+            const icon = document.querySelector('#legend-toggle i');
+            icon.className = legend.classList.contains('collapsed') ? 'fas fa-chevron-up' : 'fas fa-chevron-down';
+        }
+
+        // ===== DATA LOADING (with pagination for >1000 rows) =====
+        async function fetchAll(table) {
+            let allData = [];
+            let from = 0;
+            const pageSize = 1000;
+            while (true) {
+                const { data, error } = await db
+                    .from(table)
+                    .select('*')
+                    .range(from, from + pageSize - 1);
+                if (error) throw new Error(`${table}: ${error.message}`);
+                if (!data || data.length === 0) break;
+                allData = allData.concat(data);
+                if (data.length < pageSize) break;
+                from += pageSize;
+            }
+            return allData;
+        }
+
+        async function loadAllData() {
+            showLoading('Chargement des données...');
+            try {
+                allCEC = await fetchAll('national_cec_view');
+                console.log(`CEC chargés: ${allCEC.length}`);
+
+                allRegions = await fetchAll('regions_geojson');
+                console.log(`Régions: ${allRegions.length}`);
+
+                allDepartements = await fetchAll('departements_geojson');
+                console.log(`Départements: ${allDepartements.length}`);
+
+                allArrondissements = await fetchAll('arrondissements_geojson');
+                console.log(`Arrondissements: ${allArrondissements.length}`);
+
+                renderRegions();
+                renderDepartements();
+                renderArrondissements();
+                populateFilters();
+                applyFiltersAndRender();
+                hideLoading();
+            } catch (err) {
+                hideLoading();
+                console.error('Erreur:', err);
+                alert('Erreur: ' + err.message);
+            }
+        }
+
+        // ===== RENDER LAYERS =====
+        function parseGeojson(val) {
+            if (!val) return null;
+            return typeof val === 'string' ? JSON.parse(val) : val;
+        }
+
+        function renderRegions() {
+            regionsLayer.clearLayers();
+            allRegions.forEach(r => {
+                const gj = parseGeojson(r.geojson);
+                if (!gj) return;
+                const layer = L.geoJSON(gj, {
+                    style: { color: '#d32f2f', weight: 3, fillOpacity: 0, dashArray: null },
+                    interactive: true
+                });
+                layer.eachLayer(l => {
+                    l.bindPopup(`<div class="popup-content"><h4><i class="fas fa-globe-africa"></i> Région</h4><table><tr><td>Nom</td><td><strong>${r.nom_region}</strong></td></tr></table></div>`);
+                });
+                regionsLayer.addLayer(layer);
+            });
+        }
+
+        function renderDepartements() {
+            departementsLayer.clearLayers();
+            allDepartements.forEach(d => {
+                const gj = parseGeojson(d.geojson);
+                if (!gj) return;
+                const layer = L.geoJSON(gj, {
+                    style: { color: '#212121', weight: 2, fillOpacity: 0, dashArray: '8,5' },
+                    interactive: true
+                });
+                layer.eachLayer(l => {
+                    l.bindPopup(`<div class="popup-content"><h4><i class="fas fa-map"></i> Département</h4><table><tr><td>Nom</td><td><strong>${d.nom_departement}</strong></td></tr></table></div>`);
+                });
+                departementsLayer.addLayer(layer);
+            });
+        }
+
+        function renderArrondissements() {
+            arrondissementsLayer.clearLayers();
+            allArrondissements.forEach(a => {
+                const gj = parseGeojson(a.geojson);
+                if (!gj) return;
+                const layer = L.geoJSON(gj, {
+                    style: { color: '#7B1FA2', weight: 1.5, fillOpacity: 0, dashArray: '5,4' },
+                    interactive: true
+                });
+                layer.eachLayer(l => {
+                    l.bindPopup(`<div class="popup-content"><h4><i class="fas fa-map-pin"></i> Arrondissement</h4><table><tr><td>Nom</td><td><strong>${a.nom_arrondissement}</strong></td></tr></table></div>`);
+                });
+                arrondissementsLayer.addLayer(layer);
+            });
+        }
+
+        // ===== CEC =====
+        function getCECColor(type) {
+            if (!type) return '#9E9E9E';
+            const t = type.trim().toLowerCase();
+            if (t === 'principal') return '#2196F3';
+            if (t === 'secondaire' || t === 'sécondaire') return '#FF9800';
+            if (t === 'c.u.') return '#f44336';
+            return '#9E9E9E';
+        }
+
+        function renderCEC() {
+            cecLayer.clearLayers();
+            filteredCEC.forEach(cec => {
+                if (!cec.lat || !cec.lng) return;
+                const marker = L.circleMarker([cec.lat, cec.lng], {
+                    radius: 6,
+                    fillColor: getCECColor(cec.type_cec),
+                    color: '#fff',
+                    weight: 1.5,
+                    fillOpacity: 0.9,
+                    pane: 'cecPane'
+                });
+                marker.cecData = cec;
+                marker.bindPopup(`
+                    <div class="popup-content">
+                        <h4><i class="fas fa-landmark"></i> ${cec.nom_cec || '—'}</h4>
+                        <table>
+                            <tr><td>Type</td><td>${cec.type_cec || '—'}</td></tr>
+                            <tr><td>Commune</td><td>${cec.commune || '—'}</td></tr>
+                            <tr><td>Département</td><td>${cec.departement || '—'}</td></tr>
+                            <tr><td>Région</td><td>${cec.region || '—'}</td></tr>
+                            <tr><td>N° Immatriculation</td><td>${cec.num_ima || '—'}</td></tr>
+                            <tr><td>Code CEC</td><td>${cec.code_cec || '—'}</td></tr>
+                            <tr><td>Réf. COG</td><td>${cec.ref_cog || '—'}</td></tr>
+                            <tr><td>Observations</td><td>${cec.obs_req || '—'}</td></tr>
+                            <tr><td>Date</td><td>${cec.date || '—'}</td></tr>
+                        </table>
+                    </div>
+                `);
+                cecLayer.addLayer(marker);
+            });
+        }
+
+        // ===== FILTERS =====
+        function applyFiltersAndRender() {
+            const searchText = document.getElementById('search-cec').value.trim().toLowerCase();
+            const selRegion = document.getElementById('filter-region').value;
+            const selDep = document.getElementById('filter-departement').value;
+            const selCommune = document.getElementById('filter-commune').value;
+            const checkedTypes = Array.from(document.querySelectorAll('.type-filter:checked')).map(cb => cb.value);
+
+            filteredCEC = allCEC.filter(cec => {
+                if (searchText && !(cec.nom_cec || '').toLowerCase().includes(searchText)) return false;
+                if (selRegion && cec.region !== selRegion) return false;
+                if (selDep && cec.departement !== selDep) return false;
+                if (selCommune && cec.commune !== selCommune) return false;
+                const type = (cec.type_cec || '').trim();
+                const match = checkedTypes.some(ct => {
+                    if (ct === 'Secondaire') return type === 'Secondaire' || type === 'Sécondaire';
+                    if (ct === 'C.U.') return type === 'C.U.' || type === 'C.u.';
+                    return type === ct;
+                });
+                return match;
+            });
+            renderCEC();
+            updateStats();
+        }
+
+        function populateFilters() {
+            const regions = [...new Set(allCEC.map(c => c.region).filter(Boolean))].sort();
+            const sel = document.getElementById('filter-region');
+            regions.forEach(r => { const o = document.createElement('option'); o.value = r; o.textContent = r; sel.appendChild(o); });
+            updateDepartementOptions();
+        }
+
+        function updateDepartementOptions() {
+            const selRegion = document.getElementById('filter-region').value;
+            const depSel = document.getElementById('filter-departement');
+            depSel.innerHTML = '<option value="">— Tous les départements —</option>';
+            const deps = [...new Set(allCEC.filter(c => !selRegion || c.region === selRegion).map(c => c.departement).filter(Boolean))].sort();
+            deps.forEach(d => { const o = document.createElement('option'); o.value = d; o.textContent = d; depSel.appendChild(o); });
+            updateCommuneOptions();
+        }
+
+        function updateCommuneOptions() {
+            const selRegion = document.getElementById('filter-region').value;
+            const selDep = document.getElementById('filter-departement').value;
+            const comSel = document.getElementById('filter-commune');
+            comSel.innerHTML = '<option value="">— Toutes les communes —</option>';
+            const communes = [...new Set(
+                allCEC.filter(c => (!selRegion || c.region === selRegion) && (!selDep || c.departement === selDep))
+                    .map(c => c.commune).filter(Boolean)
+            )].sort();
+            communes.forEach(c => { const o = document.createElement('option'); o.value = c; o.textContent = c; comSel.appendChild(o); });
+        }
+
+        function resetFilters() {
+            document.getElementById('search-cec').value = '';
+            document.getElementById('filter-region').value = '';
+            document.querySelectorAll('.type-filter').forEach(cb => cb.checked = true);
+            updateDepartementOptions();
+            applyFiltersAndRender();
+            closestLines.clearLayers();
+            document.getElementById('gps-results').innerHTML = '';
+        }
+
+        function updateStats() {
+            document.getElementById('total-cec').textContent = filteredCEC.length;
+            const counts = {};
+            filteredCEC.forEach(c => {
+                let t = (c.type_cec || 'Autre').trim();
+                if (t === 'Sécondaire') t = 'Secondaire';
+                if (t === 'C.u.') t = 'C.U.';
+                counts[t] = (counts[t] || 0) + 1;
+            });
+            document.getElementById('type-stats').innerHTML = Object.entries(counts).map(([t, n]) => `<strong>${t}:</strong> ${n}`).join(' | ');
+            const selR = document.getElementById('filter-region').value;
+            const selD = document.getElementById('filter-departement').value;
+            const selC = document.getElementById('filter-commune').value;
+            let info = '';
+            if (selR) info += `Région: ${selR}<br>`;
+            if (selD) info += `Département: ${selD}<br>`;
+            if (selC) info += `Commune: ${selC}`;
+            document.getElementById('filter-info').innerHTML = info;
+        }
+
+        // ===== LAYER TOGGLE =====
+        function toggleLayer(name) {
+            const cb = document.getElementById('toggle-' + name);
+            const layers = { regions: regionsLayer, departements: departementsLayer, arrondissements: arrondissementsLayer, cec: cecLayer };
+            if (cb.checked) map.addLayer(layers[name]); else map.removeLayer(layers[name]);
+        }
+
+        // ===== GEOLOCATION =====
+        function getUserLocation() {
+            if (!navigator.geolocation) { alert("Géolocalisation non supportée."); return; }
+            showLoading('Recherche GPS...');
+            navigator.geolocation.getCurrentPosition(
+                pos => {
+                    hideLoading();
+                    userPosition = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                    if (userMarker) map.removeLayer(userMarker);
+                    userMarker = L.marker([userPosition.lat, userPosition.lng], {
+                        icon: L.divIcon({
+                            className: '',
+                            html: '<div style="background:#4CAF50;width:16px;height:16px;border-radius:50%;border:3px solid white;box-shadow:0 0 8px rgba(0,0,0,0.5);"></div>',
+                            iconSize: [16, 16], iconAnchor: [8, 8]
+                        })
+                    }).addTo(map).bindPopup('<b>Votre position</b>').openPopup();
+                    map.setView([userPosition.lat, userPosition.lng], 11);
+                },
+                err => { hideLoading(); alert('Erreur GPS: ' + err.message); },
+                { enableHighAccuracy: true, timeout: 10000 }
+            );
+        }
+
+        function haversine(lat1, lon1, lat2, lon2) {
+            const R = 6371, dLat = (lat2-lat1)*Math.PI/180, dLon = (lon2-lon1)*Math.PI/180;
+            const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        }
+
+        function findClosestCEC() {
+            if (!userPosition) { alert("Cliquez d'abord sur 'Ma position GPS'."); return; }
+            const count = parseInt(document.getElementById('closest-count').value);
+            const withDist = filteredCEC.filter(c => c.lat && c.lng)
+                .map(c => ({ ...c, dist: haversine(userPosition.lat, userPosition.lng, c.lat, c.lng) }))
+                .sort((a, b) => a.dist - b.dist).slice(0, count);
+
+            closestLines.clearLayers();
+            withDist.forEach(c => {
+                L.polyline([[userPosition.lat, userPosition.lng], [c.lat, c.lng]], { color: '#e74c3c', weight: 2, dashArray: '6,6', opacity: 0.8 }).addTo(closestLines);
+                L.circleMarker([c.lat, c.lng], { radius: 10, fillColor: '#e74c3c', color: '#fff', weight: 2, fillOpacity: 0.9, pane: 'cecPane' })
+                    .addTo(closestLines).bindPopup(`<b>${c.nom_cec}</b><br>${c.dist.toFixed(2)} km`);
+            });
+
+            document.getElementById('gps-results').innerHTML = withDist.map((c, i) => `
+                <div class="gps-result-item">
+                    <strong>${i+1}. ${c.nom_cec}</strong><br>
+                    ${c.commune} — ${c.departement}<br>
+                    <span class="distance"><i class="fas fa-route"></i> ${c.dist.toFixed(2)} km</span>
+                </div>
+            `).join('') || '<p style="font-size:11px;color:#95a5a6;">Aucun résultat</p>';
+
+            if (withDist.length) {
+                map.fitBounds(L.latLngBounds([[userPosition.lat, userPosition.lng], ...withDist.map(c => [c.lat, c.lng])]), { padding: [50, 50] });
+            }
+        }
+
+        // ===== MEASURE TOOL =====
+        let measureMode = null; // 'distance' or 'area'
+        let measurePoints = [];
+        let measurePolyline = null;
+        let measurePolygon = null;
+        let measureMarkers = [];
+
+        function startMeasure(mode) {
+            clearMeasure();
+            measureMode = mode;
+            document.getElementById('measure-panel').classList.add('active');
+            document.getElementById('measure-result').textContent = mode === 'distance' ? 'Cliquez pour mesurer' : 'Cliquez pour dessiner';
+            document.getElementById('btn-measure-dist').classList.toggle('active', mode === 'distance');
+            document.getElementById('btn-measure-area').classList.toggle('active', mode === 'area');
+            map.getContainer().style.cursor = 'crosshair';
+        }
+
+        function clearMeasure() {
+            measureMode = null;
+            measurePoints = [];
+            measureLayer.clearLayers();
+            measureMarkers = [];
+            measurePolyline = null;
+            measurePolygon = null;
+            document.getElementById('measure-panel').classList.remove('active');
+            document.getElementById('btn-measure-dist').classList.remove('active');
+            document.getElementById('btn-measure-area').classList.remove('active');
+            map.getContainer().style.cursor = '';
+        }
+
+        function formatDistance(meters) {
+            if (meters >= 1000) return (meters / 1000).toFixed(2) + ' km';
+            return meters.toFixed(0) + ' m';
+        }
+
+        function formatArea(sqMeters) {
+            if (sqMeters >= 1000000) return (sqMeters / 1000000).toFixed(2) + ' km²';
+            if (sqMeters >= 10000) return (sqMeters / 10000).toFixed(2) + ' ha';
+            return sqMeters.toFixed(0) + ' m²';
+        }
+
+        function computeSphericalArea(latlngs) {
+            const rad = Math.PI / 180;
+            const R = 6371000;
+            let area = 0;
+            const n = latlngs.length;
+            if (n < 3) return 0;
+            for (let i = 0; i < n; i++) {
+                const j = (i + 1) % n;
+                const k = (i + 2) % n;
+                area += (latlngs[j].lng * rad - latlngs[i].lng * rad) * Math.sin(latlngs[k].lat * rad);
+            }
+            area = Math.abs(area * R * R / 2);
+            return area;
+        }
+
+        map.on('click', function(e) {
+            if (!measureMode) return;
+
+            measurePoints.push(e.latlng);
+
+            const marker = L.circleMarker(e.latlng, {
+                radius: 4, fillColor: '#fff', color: '#333', weight: 2, fillOpacity: 1, pane: 'measurePane'
+            }).addTo(measureLayer);
+            measureMarkers.push(marker);
+
+            if (measureMode === 'distance') {
+                if (measurePolyline) measureLayer.removeLayer(measurePolyline);
+                measurePolyline = L.polyline(measurePoints, { color: '#2196F3', weight: 3, pane: 'measurePane' }).addTo(measureLayer);
+
+                let totalDist = 0;
+                for (let i = 1; i < measurePoints.length; i++) {
+                    totalDist += measurePoints[i-1].distanceTo(measurePoints[i]);
+                }
+                document.getElementById('measure-result').textContent = 'Distance: ' + formatDistance(totalDist);
+            }
+
+            if (measureMode === 'area') {
+                if (measurePolygon) measureLayer.removeLayer(measurePolygon);
+                if (measurePoints.length >= 3) {
+                    measurePolygon = L.polygon(measurePoints, { color: '#9C27B0', weight: 2, fillOpacity: 0.2, pane: 'measurePane' }).addTo(measureLayer);
+                    const area = computeSphericalArea(measurePoints);
+                    document.getElementById('measure-result').textContent = 'Superficie: ' + formatArea(area);
+                } else {
+                    if (measurePoints.length >= 2) {
+                        if (measurePolyline) measureLayer.removeLayer(measurePolyline);
+                        measurePolyline = L.polyline(measurePoints, { color: '#9C27B0', weight: 2, dashArray: '4,4', pane: 'measurePane' }).addTo(measureLayer);
+                    }
+                    document.getElementById('measure-result').textContent = `${measurePoints.length}/3 points min.`;
+                }
+            }
+        });
+
+        map.on('dblclick', function(e) {
+            if (measureMode) {
+                L.DomEvent.stopPropagation(e);
+                L.DomEvent.preventDefault(e);
+                measureMode = null;
+                map.getContainer().style.cursor = '';
+                document.getElementById('btn-measure-dist').classList.remove('active');
+                document.getElementById('btn-measure-area').classList.remove('active');
+            }
+        });
+
+        // ===== AUTOCOMPLETE SEARCH =====
+        const searchInput = document.getElementById('search-cec');
+        const suggestionsDiv = document.getElementById('search-suggestions');
+        let activeSuggestion = -1;
+
+        function showSuggestions(query) {
+            suggestionsDiv.innerHTML = '';
+            activeSuggestion = -1;
+            if (!query || query.length < 2) { suggestionsDiv.style.display = 'none'; return; }
+            const q = query.toLowerCase();
+            const matches = allCEC
+                .filter(c => (c.nom_cec || '').toLowerCase().includes(q))
+                .slice(0, 10);
+            if (!matches.length) { suggestionsDiv.style.display = 'none'; return; }
+            matches.forEach((cec, i) => {
+                const div = document.createElement('div');
+                div.className = 'suggestion';
+                div.innerHTML = `${cec.nom_cec}<span class="hint">${cec.commune || ''}</span>`;
+                div.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    selectSuggestion(cec);
+                });
+                suggestionsDiv.appendChild(div);
+            });
+            suggestionsDiv.style.display = 'block';
+        }
+
+        function selectSuggestion(cec) {
+            searchInput.value = cec.nom_cec;
+            suggestionsDiv.style.display = 'none';
+            applyFiltersAndRender();
+            if (cec.lat && cec.lng) {
+                map.setView([cec.lat, cec.lng], 14);
+                cecLayer.eachLayer(m => {
+                    if (m.cecData && m.cecData.gid === cec.gid) m.openPopup();
+                });
+            }
+        }
+
+        searchInput.addEventListener('input', () => {
+            showSuggestions(searchInput.value.trim());
+            applyFiltersAndRender();
+        });
+        searchInput.addEventListener('keydown', (e) => {
+            const items = suggestionsDiv.querySelectorAll('.suggestion');
+            if (!items.length) return;
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                activeSuggestion = Math.min(activeSuggestion + 1, items.length - 1);
+                items.forEach((el, i) => el.classList.toggle('active', i === activeSuggestion));
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                activeSuggestion = Math.max(activeSuggestion - 1, 0);
+                items.forEach((el, i) => el.classList.toggle('active', i === activeSuggestion));
+            } else if (e.key === 'Enter' && activeSuggestion >= 0) {
+                e.preventDefault();
+                const cec = allCEC.filter(c => (c.nom_cec || '').toLowerCase().includes(searchInput.value.trim().toLowerCase()))[activeSuggestion];
+                if (cec) selectSuggestion(cec);
+            } else if (e.key === 'Escape') {
+                suggestionsDiv.style.display = 'none';
+            }
+        });
+        searchInput.addEventListener('blur', () => { setTimeout(() => suggestionsDiv.style.display = 'none', 150); });
+
+        // ===== EVENT LISTENERS =====
+        document.getElementById('filter-region').addEventListener('change', () => { updateDepartementOptions(); applyFiltersAndRender(); });
+        document.getElementById('filter-departement').addEventListener('change', () => { updateCommuneOptions(); applyFiltersAndRender(); });
+        document.getElementById('filter-commune').addEventListener('change', applyFiltersAndRender);
+        document.querySelectorAll('.type-filter').forEach(cb => cb.addEventListener('change', applyFiltersAndRender));
+
+        // ===== INIT =====
+        if (window.innerWidth <= 768) {
+            document.getElementById('sidebar').classList.add('collapsed');
+        }
+        loadAllData();
+    </script>
+</body>
+</html>
