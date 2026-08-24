@@ -193,6 +193,25 @@
             animation: spin 0.8s linear infinite; margin: 0 auto 12px;
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        .gps-marker { position: relative; width: 40px; height: 40px; }
+        .gps-dot {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 18px; height: 18px; border-radius: 50%;
+            background: radial-gradient(circle at 35% 35%, #64B5F6, #1565C0);
+            border: 3px solid white;
+            box-shadow: 0 2px 6px rgba(21,101,192,0.6), inset 0 -2px 4px rgba(0,0,0,0.2);
+        }
+        .gps-pulse {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 40px; height: 40px; border-radius: 50%;
+            background: rgba(33,150,243,0.25);
+            animation: gps-ping 1.5s ease-out infinite;
+        }
+        @keyframes gps-ping {
+            0% { transform: translate(-50%, -50%) scale(0.5); opacity: 1; }
+            100% { transform: translate(-50%, -50%) scale(1.2); opacity: 0; }
+        }
         .loading-box p { font-size: 13px; color: #333; }
 
         .popup-content { font-size: 12px; max-width: 280px; }
@@ -638,8 +657,8 @@
                     userMarker = L.marker([userPosition.lat, userPosition.lng], {
                         icon: L.divIcon({
                             className: '',
-                            html: '<div style="background:#4CAF50;width:16px;height:16px;border-radius:50%;border:3px solid white;box-shadow:0 0 8px rgba(0,0,0,0.5);"></div>',
-                            iconSize: [16, 16], iconAnchor: [8, 8]
+                            html: '<div class="gps-marker"><div class="gps-pulse"></div><div class="gps-dot"></div></div>',
+                            iconSize: [40, 40], iconAnchor: [20, 20]
                         })
                     }).addTo(map).bindPopup('<b>Votre position</b>').openPopup();
                     map.setView([userPosition.lat, userPosition.lng], 11);
