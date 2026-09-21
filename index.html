@@ -220,6 +220,14 @@
         .popup-content td { padding: 2px 4px; vertical-align: top; font-size: 11px; }
         .popup-content td:first-child { font-weight: 600; color: #555; white-space: nowrap; padding-right: 6px; }
 
+        #refresh-btn {
+            background: none; border: 2px solid rgba(255,255,255,0.6);
+            color: white; width: 32px; height: 32px; border-radius: 4px;
+            cursor: pointer; font-size: 13px; display: flex; align-items: center; justify-content: center;
+            transition: all 0.2s;
+        }
+        #refresh-btn:hover { background: rgba(255,255,255,0.15); border-color: white; }
+
         @media (max-width: 768px) {
             #toggle-sidebar-btn { display: block; }
             #sidebar {
@@ -231,8 +239,31 @@
             #sidebar.collapsed { transform: translateX(-100%); }
             #header h1 { font-size: 14px; }
             #header p { display: none; }
-            #gps-panel { left: 10px; right: 10px; max-width: none; }
-            #legend { max-width: 200px; font-size: 10px; }
+            #legend { max-width: 180px; font-size: 10px; bottom: 15px; right: 5px; padding: 8px 10px; }
+            .popup-content { max-width: 230px; }
+            .popup-content td { font-size: 10px; }
+            .popup-actions button { font-size: 9px; padding: 4px 6px; }
+            #edit-mode-bar { font-size: 11px; padding: 8px 12px; gap: 8px; white-space: normal; max-width: 90vw; text-align: center; }
+            #measure-panel { max-width: 90vw; font-size: 11px; padding: 6px 10px; }
+            .measure-toolbar { top: 70px; right: 5px; }
+            .measure-toolbar button { width: 32px; height: 32px; font-size: 12px; }
+            .cec-modal { padding: 15px; width: 100%; }
+            .cec-modal h3 { font-size: 14px; }
+            .cec-modal .form-row-inline { flex-direction: column; gap: 0; }
+            .cec-modal .form-row-inline .form-row { margin-bottom: 10px; }
+        }
+        @media (max-width: 400px) {
+            #header { padding: 8px 10px; }
+            #header h1 { font-size: 12px; }
+            .header-right { gap: 5px; }
+            #refresh-btn { width: 28px; height: 28px; font-size: 11px; }
+            #toggle-sidebar-btn { padding: 4px 7px; font-size: 12px; }
+            #sidebar { width: 100vw; }
+            .popup-content { max-width: 200px; }
+            #edit-mode-bar { font-size: 10px; padding: 6px 10px; }
+            #legend { max-width: 150px; font-size: 9px; }
+            .cec-modal .modal-actions { flex-direction: column; }
+            .cec-modal .modal-actions .btn { width: 100%; }
         }
         /* CEC Management Modal */
         .cec-modal-overlay {
@@ -309,6 +340,7 @@
         </div>
         <div class="header-right">
             <span id="loading-status"></span>
+            <button id="refresh-btn" onclick="location.reload()" title="Rafraîchir"><i class="fas fa-sync-alt"></i></button>
             <button id="toggle-sidebar-btn" onclick="document.getElementById('sidebar').classList.toggle('collapsed')"><i class="fas fa-bars"></i></button>
         </div>
     </div>
@@ -452,8 +484,12 @@
         const measureLayer = L.layerGroup().addTo(map);
 
         // Ensure CEC pane is above overlays for popup priority
+        map.createPane('adminPane');
+        map.getPane('adminPane').style.zIndex = 350;
         map.createPane('cecPane');
         map.getPane('cecPane').style.zIndex = 650;
+        map.createPane('closestCecPane');
+        map.getPane('closestCecPane').style.zIndex = 660;
         map.createPane('measurePane');
         map.getPane('measurePane').style.zIndex = 700;
 
@@ -545,7 +581,7 @@
                 if (!gj) return;
                 const layer = L.geoJSON(gj, {
                     style: { color: '#d32f2f', weight: 3, fillOpacity: 0, dashArray: null },
-                    interactive: true
+                    interactive: true, pane: 'adminPane'
                 });
                 layer.eachLayer(l => {
                     l.bindPopup(`<div class="popup-content"><h4><i class="fas fa-globe-africa"></i> Région</h4><table><tr><td>Nom</td><td><strong>${r.nom_region}</strong></td></tr></table></div>`);
@@ -561,7 +597,7 @@
                 if (!gj) return;
                 const layer = L.geoJSON(gj, {
                     style: { color: '#212121', weight: 2, fillOpacity: 0, dashArray: '8,5' },
-                    interactive: true
+                    interactive: true, pane: 'adminPane'
                 });
                 layer.eachLayer(l => {
                     l.bindPopup(`<div class="popup-content"><h4><i class="fas fa-map"></i> Département</h4><table><tr><td>Nom</td><td><strong>${d.nom_departement}</strong></td></tr></table></div>`);
@@ -577,7 +613,7 @@
                 if (!gj) return;
                 const layer = L.geoJSON(gj, {
                     style: { color: '#7B1FA2', weight: 1.5, fillOpacity: 0, dashArray: '5,4' },
-                    interactive: true
+                    interactive: true, pane: 'adminPane'
                 });
                 layer.eachLayer(l => {
                     l.bindPopup(`<div class="popup-content"><h4><i class="fas fa-map-pin"></i> Arrondissement</h4><table><tr><td>Nom</td><td><strong>${a.nom_arrondissement}</strong></td></tr></table></div>`);
@@ -796,8 +832,27 @@
             closestLines.clearLayers();
             withDist.forEach(c => {
                 L.polyline([[userPosition.lat, userPosition.lng], [c.lat, c.lng]], { color: '#e74c3c', weight: 2, dashArray: '6,6', opacity: 0.8 }).addTo(closestLines);
-                L.circleMarker([c.lat, c.lng], { radius: 10, fillColor: '#e74c3c', color: '#fff', weight: 2, fillOpacity: 0.9, pane: 'cecPane' })
-                    .addTo(closestLines).bindPopup(`<b>${c.nom_cec}</b><br>${c.type_cec || '—'} — ${c.commune || '—'}<br><strong>${c.dist.toFixed(2)} km</strong>`);
+                L.circleMarker([c.lat, c.lng], { radius: 10, fillColor: '#e74c3c', color: '#fff', weight: 2, fillOpacity: 0.9, pane: 'closestCecPane' })
+                    .addTo(closestLines).bindPopup(`
+                        <div class="popup-content">
+                            <h4><i class="fas fa-landmark"></i> ${c.nom_cec || '—'}</h4>
+                            <table>
+                                <tr><td>Type</td><td>${c.type_cec || '—'}</td></tr>
+                                <tr><td>Commune</td><td>${c.commune || '—'}</td></tr>
+                                <tr><td>Département</td><td>${c.departement || '—'}</td></tr>
+                                <tr><td>Région</td><td>${c.region || '—'}</td></tr>
+                                <tr><td>Distance</td><td><strong style="color:#e67e22;">${c.dist.toFixed(2)} km</strong></td></tr>
+                                <tr><td>N° Immatriculation</td><td>${c.num_ima || '—'}</td></tr>
+                                <tr><td>Code CEC</td><td>${c.code_cec || '—'}</td></tr>
+                                <tr><td>Réf. COG</td><td>${c.ref_cog || '—'}</td></tr>
+                                <tr><td>Observations</td><td>${c.obs_req || '—'}</td></tr>
+                            </table>
+                            <div class="popup-actions">
+                                <button class="btn-edit" onclick="openEditCEC(${c.gid})"><i class="fas fa-pen"></i> Modifier</button>
+                                <button class="btn-move" onclick="startMoveCEC(${c.gid})"><i class="fas fa-arrows-alt"></i> Déplacer</button>
+                            </div>
+                        </div>
+                    `);
             });
 
             const accuracyWarning = userPosition.accuracy > 2000
@@ -825,8 +880,10 @@
         let measurePolygon = null;
         let measureMarkers = [];
 
-        function setLayersInteractive(enabled) {
-            [regionsLayer, departementsLayer, arrondissementsLayer, cecLayer].forEach(group => {
+        function setLayersInteractive(enabled, includeAll) {
+            const groups = [regionsLayer, departementsLayer, arrondissementsLayer];
+            if (includeAll) { groups.push(cecLayer, closestLines); }
+            groups.forEach(group => {
                 group.eachLayer(layer => {
                     if (layer.eachLayer) {
                         layer.eachLayer(l => { if (l.getElement) { const el = l.getElement(); if (el) el.style.pointerEvents = enabled ? '' : 'none'; } });
@@ -845,7 +902,7 @@
             document.getElementById('btn-measure-area').classList.toggle('active', mode === 'area');
             map.getContainer().style.cursor = 'crosshair';
             map.closePopup();
-            setLayersInteractive(false);
+            setLayersInteractive(false, true);
         }
 
         function clearMeasure() {
@@ -859,7 +916,7 @@
             document.getElementById('btn-measure-dist').classList.remove('active');
             document.getElementById('btn-measure-area').classList.remove('active');
             map.getContainer().style.cursor = '';
-            setLayersInteractive(true);
+            setLayersInteractive(true, true);
         }
 
         function formatDistance(meters) {
@@ -934,7 +991,7 @@
                 map.getContainer().style.cursor = '';
                 document.getElementById('btn-measure-dist').classList.remove('active');
                 document.getElementById('btn-measure-area').classList.remove('active');
-                setLayersInteractive(true);
+                setLayersInteractive(true, true);
             }
         });
 
@@ -1172,7 +1229,7 @@
             bar.style.display = 'flex';
             map.getContainer().style.cursor = 'crosshair';
             map.closePopup();
-            setLayersInteractive(false);
+            setLayersInteractive(false, true);
         }
 
         function cancelEditMode() {
@@ -1181,7 +1238,7 @@
             pendingAddLatLng = null;
             document.getElementById('edit-mode-bar').style.display = 'none';
             map.getContainer().style.cursor = '';
-            setLayersInteractive(true);
+            setLayersInteractive(true, true);
         }
 
         map.on('click', function handleEditClick(e) {
@@ -1267,7 +1324,7 @@
             document.getElementById('edit-mode-text').innerHTML = `<i class="fas fa-arrows-alt"></i> Cliquez la nouvelle position pour <strong>${name}</strong>`;
             bar.style.display = 'flex';
             map.getContainer().style.cursor = 'crosshair';
-            setLayersInteractive(false);
+            setLayersInteractive(false, true);
         }
 
         async function performMoveCEC(gid, lat, lng) {
