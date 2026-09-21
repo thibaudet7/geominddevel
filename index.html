@@ -330,6 +330,8 @@
         .popup-actions .btn-edit:hover { background: #2d8659; }
         .popup-actions .btn-move { background: #2196F3; color: white; }
         .popup-actions .btn-move:hover { background: #42A5F5; }
+        .popup-actions .btn-delete { background: #d32f2f; color: white; }
+        .popup-actions .btn-delete:hover { background: #ef5350; }
     </style>
 </head>
 <body>
@@ -662,6 +664,7 @@
                         <div class="popup-actions">
                             <button class="btn-edit" onclick="openEditCEC(${cec.gid})"><i class="fas fa-pen"></i> Modifier</button>
                             <button class="btn-move" onclick="startMoveCEC(${cec.gid})"><i class="fas fa-arrows-alt"></i> Déplacer</button>
+                            <button class="btn-delete" onclick="deleteCEC(${cec.gid})"><i class="fas fa-trash"></i> Supprimer</button>
                         </div>
                     </div>
                 `);
@@ -1378,6 +1381,21 @@
                 }, 300);
                 alert('CEC mis à jour avec succès !');
             });
+        }
+
+        // --- DELETE CEC ---
+        async function deleteCEC(gid) {
+            const cec = allCEC.find(c => c.gid === gid);
+            if (!cec) { alert('CEC introuvable.'); return; }
+            if (!confirm(`Supprimer le CEC « ${cec.nom_cec} » (${cec.commune}) ?\n\nCette action est irréversible.`)) return;
+            map.closePopup();
+            showLoading('Suppression...');
+            const { error } = await db.from('national_cec').delete().eq('gid', gid);
+            hideLoading();
+            if (error) { alert('Erreur: ' + error.message); return; }
+            allCEC = await fetchAll('national_cec_view');
+            applyFiltersAndRender();
+            alert('CEC supprimé avec succès !');
         }
 
         // ===== INIT =====
