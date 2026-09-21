@@ -1172,6 +1172,7 @@
             bar.style.display = 'flex';
             map.getContainer().style.cursor = 'crosshair';
             map.closePopup();
+            setLayersInteractive(false);
         }
 
         function cancelEditMode() {
@@ -1180,6 +1181,7 @@
             pendingAddLatLng = null;
             document.getElementById('edit-mode-bar').style.display = 'none';
             map.getContainer().style.cursor = '';
+            setLayersInteractive(true);
         }
 
         map.on('click', function handleEditClick(e) {
@@ -1265,6 +1267,7 @@
             document.getElementById('edit-mode-text').innerHTML = `<i class="fas fa-arrows-alt"></i> Cliquez la nouvelle position pour <strong>${name}</strong>`;
             bar.style.display = 'flex';
             map.getContainer().style.cursor = 'crosshair';
+            setLayersInteractive(false);
         }
 
         async function performMoveCEC(gid, lat, lng) {
