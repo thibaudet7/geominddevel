@@ -234,6 +234,71 @@
             #gps-panel { left: 10px; right: 10px; max-width: none; }
             #legend { max-width: 200px; font-size: 10px; }
         }
+        /* CEC Management Modal */
+        .cec-modal-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.6); display: flex;
+            align-items: center; justify-content: center; z-index: 10000;
+        }
+        .cec-modal {
+            background: #fff; border-radius: 10px; padding: 20px; width: 420px;
+            max-width: 95vw; max-height: 90vh; overflow-y: auto;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        }
+        .cec-modal h3 {
+            color: #1a5632; margin-bottom: 15px; font-size: 16px;
+            border-bottom: 2px solid #4CAF50; padding-bottom: 8px;
+        }
+        .cec-modal .form-row { margin-bottom: 10px; }
+        .cec-modal .form-row label {
+            display: block; font-size: 11px; font-weight: 600;
+            color: #555; margin-bottom: 3px;
+        }
+        .cec-modal .form-row input,
+        .cec-modal .form-row select,
+        .cec-modal .form-row textarea {
+            width: 100%; padding: 7px 10px; border: 1px solid #ccc;
+            border-radius: 4px; font-size: 12px; font-family: inherit;
+        }
+        .cec-modal .form-row input:focus,
+        .cec-modal .form-row select:focus,
+        .cec-modal .form-row textarea:focus { outline: none; border-color: #4CAF50; }
+        .cec-modal .form-row input[readonly] { background: #f5f5f5; color: #888; }
+        .cec-modal .form-row-inline { display: flex; gap: 10px; }
+        .cec-modal .form-row-inline .form-row { flex: 1; margin-bottom: 0; }
+        .cec-modal .modal-actions {
+            display: flex; gap: 10px; margin-top: 15px; justify-content: flex-end;
+        }
+        .cec-modal .modal-actions .btn { width: auto; padding: 8px 20px; }
+
+        #edit-mode-bar {
+            position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+            background: rgba(26,86,50,0.95); color: white;
+            padding: 10px 18px; border-radius: 6px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3); z-index: 2000;
+            font-size: 12px; display: none; align-items: center; gap: 12px;
+            white-space: nowrap;
+        }
+        #edit-mode-bar button {
+            padding: 4px 10px; border: 1px solid rgba(255,255,255,0.5); border-radius: 3px;
+            cursor: pointer; font-size: 11px; font-weight: 600;
+            background: rgba(255,255,255,0.15); color: white;
+        }
+        #edit-mode-bar button:hover { background: rgba(255,255,255,0.3); }
+
+        .popup-actions {
+            display: flex; gap: 5px; margin-top: 8px; padding-top: 6px;
+            border-top: 1px solid #eee;
+        }
+        .popup-actions button {
+            flex: 1; padding: 5px 8px; border: none; border-radius: 3px;
+            cursor: pointer; font-size: 10px; font-weight: 600;
+            display: flex; align-items: center; justify-content: center; gap: 4px;
+        }
+        .popup-actions .btn-edit { background: #1a5632; color: white; }
+        .popup-actions .btn-edit:hover { background: #2d8659; }
+        .popup-actions .btn-move { background: #2196F3; color: white; }
+        .popup-actions .btn-move:hover { background: #42A5F5; }
     </style>
 </head>
 <body>
@@ -295,6 +360,9 @@
                 <label><input type="checkbox" id="toggle-cec" checked onchange="toggleLayer('cec')"> Centres d'État Civil</label>
             </div>
 
+            <h2><i class="fas fa-edit"></i> Gestion CEC</h2>
+            <button class="btn btn-primary" onclick="startAddCEC()"><i class="fas fa-plus-circle"></i> Ajouter un CEC</button>
+
             <h2><i class="fas fa-location-crosshairs"></i> Géolocalisation</h2>
             <button class="btn btn-primary" onclick="getUserLocation()"><i class="fas fa-crosshairs"></i> Ma position GPS</button>
             <div class="filter-group" style="margin-top:8px;">
@@ -311,6 +379,12 @@
 
         <div id="map-container">
             <div id="map"></div>
+
+            <!-- Edit mode bar -->
+            <div id="edit-mode-bar">
+                <span id="edit-mode-text"></span>
+                <button onclick="cancelEditMode()"><i class="fas fa-times"></i> Annuler</button>
+            </div>
 
             <!-- Measure toolbar -->
             <div class="measure-toolbar">
@@ -549,6 +623,10 @@
                             <tr><td>Observations</td><td>${cec.obs_req || '—'}</td></tr>
                             <tr><td>Date</td><td>${cec.date || '—'}</td></tr>
                         </table>
+                        <div class="popup-actions">
+                            <button class="btn-edit" onclick="openEditCEC(${cec.gid})"><i class="fas fa-pen"></i> Modifier</button>
+                            <button class="btn-move" onclick="startMoveCEC(${cec.gid})"><i class="fas fa-arrows-alt"></i> Déplacer</button>
+                        </div>
                     </div>
                 `);
                 cecLayer.addLayer(marker);
@@ -646,25 +724,59 @@
         }
 
         // ===== GEOLOCATION =====
+        let accuracyCircle = null;
+
         function getUserLocation() {
-            if (!navigator.geolocation) { alert("Géolocalisation non supportée."); return; }
-            showLoading('Recherche GPS...');
+            if (!navigator.geolocation) { alert("Géolocalisation non supportée par ce navigateur."); return; }
+            showLoading('Recherche de votre position GPS...');
             navigator.geolocation.getCurrentPosition(
                 pos => {
                     hideLoading();
-                    userPosition = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                    const accuracy = pos.coords.accuracy;
+                    userPosition = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: accuracy };
+
                     if (userMarker) map.removeLayer(userMarker);
+                    if (accuracyCircle) map.removeLayer(accuracyCircle);
+
+                    accuracyCircle = L.circle([userPosition.lat, userPosition.lng], {
+                        radius: accuracy,
+                        color: '#2196F3',
+                        fillColor: '#2196F3',
+                        fillOpacity: 0.1,
+                        weight: 1,
+                        dashArray: '4,4'
+                    }).addTo(map);
+
+                    const accuracyText = accuracy < 100 ? `${Math.round(accuracy)} m` : `~${(accuracy / 1000).toFixed(1)} km`;
+                    const accuracyLevel = accuracy < 100 ? 'Excellente' : accuracy < 500 ? 'Bonne' : accuracy < 2000 ? 'Moyenne' : 'Faible (Wi-Fi/IP)';
+
                     userMarker = L.marker([userPosition.lat, userPosition.lng], {
                         icon: L.divIcon({
                             className: '',
                             html: '<div class="gps-marker"><div class="gps-pulse"></div><div class="gps-dot"></div></div>',
                             iconSize: [40, 40], iconAnchor: [20, 20]
                         })
-                    }).addTo(map).bindPopup('<b>Votre position</b>').openPopup();
-                    map.setView([userPosition.lat, userPosition.lng], 11);
+                    }).addTo(map).bindPopup(
+                        `<div class="popup-content"><h4><i class="fas fa-crosshairs"></i> Votre position</h4>` +
+                        `<table><tr><td>Précision</td><td>${accuracyText}</td></tr>` +
+                        `<tr><td>Qualité</td><td><strong>${accuracyLevel}</strong></td></tr>` +
+                        `<tr><td>Lat</td><td>${userPosition.lat.toFixed(6)}</td></tr>` +
+                        `<tr><td>Lng</td><td>${userPosition.lng.toFixed(6)}</td></tr></table></div>`
+                    ).openPopup();
+
+                    const zoom = accuracy < 500 ? 14 : accuracy < 2000 ? 12 : 11;
+                    map.setView([userPosition.lat, userPosition.lng], zoom);
                 },
-                err => { hideLoading(); alert('Erreur GPS: ' + err.message); },
-                { enableHighAccuracy: true, timeout: 10000 }
+                err => {
+                    hideLoading();
+                    const messages = {
+                        1: "Permission refusée. Autorisez la géolocalisation dans les paramètres de votre navigateur.",
+                        2: "Position indisponible. Vérifiez que la localisation est activée sur votre appareil.",
+                        3: "Délai dépassé. Essayez à nouveau dans un endroit avec meilleure réception."
+                    };
+                    alert(messages[err.code] || 'Erreur GPS: ' + err.message);
+                },
+                { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
             );
         }
 
@@ -677,7 +789,7 @@
         function findClosestCEC() {
             if (!userPosition) { alert("Cliquez d'abord sur 'Ma position GPS'."); return; }
             const count = parseInt(document.getElementById('closest-count').value);
-            const withDist = filteredCEC.filter(c => c.lat && c.lng)
+            const withDist = allCEC.filter(c => c.lat && c.lng)
                 .map(c => ({ ...c, dist: haversine(userPosition.lat, userPosition.lng, c.lat, c.lng) }))
                 .sort((a, b) => a.dist - b.dist).slice(0, count);
 
@@ -685,16 +797,21 @@
             withDist.forEach(c => {
                 L.polyline([[userPosition.lat, userPosition.lng], [c.lat, c.lng]], { color: '#e74c3c', weight: 2, dashArray: '6,6', opacity: 0.8 }).addTo(closestLines);
                 L.circleMarker([c.lat, c.lng], { radius: 10, fillColor: '#e74c3c', color: '#fff', weight: 2, fillOpacity: 0.9, pane: 'cecPane' })
-                    .addTo(closestLines).bindPopup(`<b>${c.nom_cec}</b><br>${c.dist.toFixed(2)} km`);
+                    .addTo(closestLines).bindPopup(`<b>${c.nom_cec}</b><br>${c.type_cec || '—'} — ${c.commune || '—'}<br><strong>${c.dist.toFixed(2)} km</strong>`);
             });
 
-            document.getElementById('gps-results').innerHTML = withDist.map((c, i) => `
+            const accuracyWarning = userPosition.accuracy > 2000
+                ? `<div style="background:rgba(231,76,60,0.2);border:1px solid rgba(231,76,60,0.4);border-radius:4px;padding:5px;margin-bottom:6px;font-size:10px;color:#e74c3c;">
+                    <i class="fas fa-exclamation-triangle"></i> Précision GPS faible (~${(userPosition.accuracy/1000).toFixed(1)} km). Les distances sont approximatives.
+                   </div>` : '';
+
+            document.getElementById('gps-results').innerHTML = accuracyWarning + (withDist.map((c, i) => `
                 <div class="gps-result-item">
                     <strong>${i+1}. ${c.nom_cec}</strong><br>
-                    ${c.commune} — ${c.departement}<br>
+                    ${c.type_cec || '—'} — ${c.commune || '—'} — ${c.departement || '—'}<br>
                     <span class="distance"><i class="fas fa-route"></i> ${c.dist.toFixed(2)} km</span>
                 </div>
-            `).join('') || '<p style="font-size:11px;color:#95a5a6;">Aucun résultat</p>';
+            `).join('') || '<p style="font-size:11px;color:#95a5a6;">Aucun résultat</p>');
 
             if (withDist.length) {
                 map.fitBounds(L.latLngBounds([[userPosition.lat, userPosition.lng], ...withDist.map(c => [c.lat, c.lng])]), { padding: [50, 50] });
@@ -772,6 +889,7 @@
         }
 
         map.on('click', function(e) {
+            if (editMode === 'add' || editMode === 'move') return;
             if (!measureMode) return;
 
             measurePoints.push(e.latlng);
@@ -889,6 +1007,318 @@
         document.getElementById('filter-departement').addEventListener('change', () => { updateCommuneOptions(); applyFiltersAndRender(); });
         document.getElementById('filter-commune').addEventListener('change', applyFiltersAndRender);
         document.querySelectorAll('.type-filter').forEach(cb => cb.addEventListener('change', applyFiltersAndRender));
+
+        // ===== CEC MANAGEMENT =====
+        let editMode = null; // 'add' | 'move'
+        let movingCECGid = null;
+
+        function getRegionsList() {
+            return [...new Set(allCEC.map(c => c.region).filter(Boolean))].sort();
+        }
+
+        function getDepartementsList(region) {
+            return [...new Set(allCEC.filter(c => !region || c.region === region).map(c => c.departement).filter(Boolean))].sort();
+        }
+
+        function getCommunesList(region, dep) {
+            return [...new Set(allCEC.filter(c => (!region || c.region === region) && (!dep || c.departement === dep)).map(c => c.commune).filter(Boolean))].sort();
+        }
+
+        function buildOptionsHTML(list, selected) {
+            return list.map(v => `<option value="${v}" ${v === selected ? 'selected' : ''}>${v}</option>`).join('');
+        }
+
+        function showCECModal(title, cec, onSave) {
+            const isEdit = !!cec;
+            const c = cec || {};
+            const regions = getRegionsList();
+            const deps = getDepartementsList(c.region);
+            const communes = getCommunesList(c.region, c.departement);
+
+            const overlay = document.createElement('div');
+            overlay.className = 'cec-modal-overlay';
+            overlay.innerHTML = `
+                <div class="cec-modal">
+                    <h3><i class="fas fa-${isEdit ? 'pen' : 'plus-circle'}"></i> ${title}</h3>
+                    <div class="form-row">
+                        <label>Nom du CEC *</label>
+                        <input type="text" id="modal-nom" value="${c.nom_cec || ''}" placeholder="Ex: CEC de Yaoundé I">
+                    </div>
+                    <div class="form-row">
+                        <label>Type *</label>
+                        <select id="modal-type">
+                            <option value="">— Choisir —</option>
+                            <option value="Principal" ${c.type_cec === 'Principal' ? 'selected' : ''}>Principal</option>
+                            <option value="Secondaire" ${(c.type_cec === 'Secondaire' || c.type_cec === 'Sécondaire') ? 'selected' : ''}>Secondaire</option>
+                            <option value="C.U." ${(c.type_cec === 'C.U.' || c.type_cec === 'C.u.') ? 'selected' : ''}>C.U.</option>
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <label>Région *</label>
+                        <select id="modal-region" onchange="modalRegionChanged()">
+                            <option value="">— Choisir —</option>
+                            ${buildOptionsHTML(regions, c.region)}
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <label>Département *</label>
+                        <select id="modal-departement" onchange="modalDepChanged()">
+                            <option value="">— Choisir —</option>
+                            ${buildOptionsHTML(deps, c.departement)}
+                        </select>
+                    </div>
+                    <div class="form-row">
+                        <label>Commune *</label>
+                        <select id="modal-commune">
+                            <option value="">— Choisir —</option>
+                            ${buildOptionsHTML(communes, c.commune)}
+                        </select>
+                    </div>
+                    <div class="form-row-inline">
+                        <div class="form-row">
+                            <label>N° Immatriculation</label>
+                            <input type="text" id="modal-num-ima" value="${c.num_ima || ''}" placeholder="Ex: AD2401">
+                        </div>
+                        <div class="form-row">
+                            <label>Code CEC</label>
+                            <input type="text" id="modal-code-cec" value="${c.code_cec || ''}" placeholder="Ex: AD2401">
+                        </div>
+                    </div>
+                    <div class="form-row-inline">
+                        <div class="form-row">
+                            <label>Réf. COG</label>
+                            <input type="text" id="modal-ref-cog" value="${c.ref_cog || ''}" placeholder="Ex: AD0402">
+                        </div>
+                        <div class="form-row">
+                            <label>Date</label>
+                            <input type="text" id="modal-date" value="${c.date || ''}" placeholder="JJ/MM/AAAA">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <label>Nouveau nom CEC</label>
+                        <input type="text" id="modal-new-cec" value="${c.new_cec || ''}">
+                    </div>
+                    <div class="form-row">
+                        <label>Observations</label>
+                        <textarea id="modal-obs" rows="2" placeholder="Remarques...">${c.obs_req || ''}</textarea>
+                    </div>
+                    ${isEdit ? '' : `
+                    <div class="form-row-inline">
+                        <div class="form-row">
+                            <label>Latitude *</label>
+                            <input type="number" step="any" id="modal-lat" value="${c.lat || ''}" placeholder="Ex: 3.8667">
+                        </div>
+                        <div class="form-row">
+                            <label>Longitude *</label>
+                            <input type="number" step="any" id="modal-lng" value="${c.lng || ''}" placeholder="Ex: 11.5167">
+                        </div>
+                    </div>
+                    <p style="font-size:10px;color:#888;margin-top:-5px;">
+                        <i class="fas fa-info-circle"></i> Coordonnées pré-remplies si vous avez cliqué la carte.
+                    </p>`}
+                    <div class="modal-actions">
+                        <button class="btn btn-secondary" onclick="this.closest('.cec-modal-overlay').remove()">Annuler</button>
+                        <button class="btn btn-primary" id="modal-save-btn"><i class="fas fa-save"></i> Enregistrer</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+            overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+            document.getElementById('modal-save-btn').addEventListener('click', () => {
+                const data = {
+                    nom_cec: document.getElementById('modal-nom').value.trim(),
+                    type_cec: document.getElementById('modal-type').value,
+                    region: document.getElementById('modal-region').value,
+                    departement: document.getElementById('modal-departement').value,
+                    commune: document.getElementById('modal-commune').value,
+                    num_ima: document.getElementById('modal-num-ima').value.trim(),
+                    code_cec: document.getElementById('modal-code-cec').value.trim(),
+                    ref_cog: document.getElementById('modal-ref-cog').value.trim(),
+                    date: document.getElementById('modal-date').value.trim(),
+                    new_cec: document.getElementById('modal-new-cec').value.trim(),
+                    obs_req: document.getElementById('modal-obs').value.trim()
+                };
+                if (!isEdit) {
+                    data.lat = parseFloat(document.getElementById('modal-lat').value);
+                    data.lng = parseFloat(document.getElementById('modal-lng').value);
+                }
+                onSave(data, overlay);
+            });
+        }
+
+        function modalRegionChanged() {
+            const region = document.getElementById('modal-region').value;
+            const depSel = document.getElementById('modal-departement');
+            depSel.innerHTML = '<option value="">— Choisir —</option>' + buildOptionsHTML(getDepartementsList(region));
+            modalDepChanged();
+        }
+
+        function modalDepChanged() {
+            const region = document.getElementById('modal-region').value;
+            const dep = document.getElementById('modal-departement').value;
+            const comSel = document.getElementById('modal-commune');
+            comSel.innerHTML = '<option value="">— Choisir —</option>' + buildOptionsHTML(getCommunesList(region, dep));
+        }
+
+        // --- ADD CEC ---
+        let pendingAddLatLng = null;
+
+        function startAddCEC() {
+            if (measureMode) clearMeasure();
+            editMode = 'add';
+            pendingAddLatLng = null;
+            const bar = document.getElementById('edit-mode-bar');
+            document.getElementById('edit-mode-text').innerHTML = '<i class="fas fa-plus-circle"></i> Cliquez sur la carte pour positionner le nouveau CEC';
+            bar.style.display = 'flex';
+            map.getContainer().style.cursor = 'crosshair';
+            map.closePopup();
+        }
+
+        function cancelEditMode() {
+            editMode = null;
+            movingCECGid = null;
+            pendingAddLatLng = null;
+            document.getElementById('edit-mode-bar').style.display = 'none';
+            map.getContainer().style.cursor = '';
+        }
+
+        map.on('click', function handleEditClick(e) {
+            if (editMode === 'add') {
+                pendingAddLatLng = e.latlng;
+                cancelEditMode();
+                showCECModal('Ajouter un nouveau CEC', null, async (data, overlay) => {
+                    if (!data.nom_cec || !data.type_cec || !data.region || !data.departement || !data.commune) {
+                        alert('Veuillez remplir tous les champs obligatoires (*).');
+                        return;
+                    }
+                    const lat = pendingAddLatLng ? pendingAddLatLng.lat : data.lat;
+                    const lng = pendingAddLatLng ? pendingAddLatLng.lng : data.lng;
+                    if (!lat || !lng || isNaN(lat) || isNaN(lng)) {
+                        alert('Coordonnées invalides.');
+                        return;
+                    }
+                    const insertData = {
+                        nom_cec: data.nom_cec,
+                        type_cec: data.type_cec,
+                        region: data.region,
+                        departement: data.departement,
+                        commune: data.commune,
+                        num_ima: data.num_ima || null,
+                        code_cec: data.code_cec || null,
+                        ref_cog: data.ref_cog || null,
+                        date: data.date || null,
+                        new_cec: data.new_cec || null,
+                        obs_req: data.obs_req || null,
+                        geom: `SRID=4326;POINT(${lng} ${lat})`
+                    };
+                    showLoading('Enregistrement...');
+                    const { data: result, error } = await db.from('national_cec').insert([insertData]).select();
+                    hideLoading();
+                    if (error) {
+                        alert('Erreur: ' + error.message);
+                        return;
+                    }
+                    overlay.remove();
+                    allCEC = await fetchAll('national_cec_view');
+                    applyFiltersAndRender();
+                    if (result && result[0]) {
+                        const newGid = result[0].gid;
+                        const newCec = allCEC.find(c => c.gid === newGid);
+                        if (newCec && newCec.lat && newCec.lng) {
+                            map.setView([newCec.lat, newCec.lng], 14);
+                            setTimeout(() => {
+                                cecLayer.eachLayer(m => { if (m.cecData && m.cecData.gid === newGid) m.openPopup(); });
+                            }, 300);
+                        }
+                    }
+                    alert('CEC ajouté avec succès !');
+                });
+                if (pendingAddLatLng) {
+                    setTimeout(() => {
+                        const latInput = document.getElementById('modal-lat');
+                        const lngInput = document.getElementById('modal-lng');
+                        if (latInput) latInput.value = pendingAddLatLng.lat.toFixed(6);
+                        if (lngInput) lngInput.value = pendingAddLatLng.lng.toFixed(6);
+                    }, 50);
+                }
+                return;
+            }
+
+            if (editMode === 'move') {
+                const newLatLng = e.latlng;
+                cancelEditMode();
+                if (!confirm(`Déplacer ce CEC vers\nLat: ${newLatLng.lat.toFixed(6)}\nLng: ${newLatLng.lng.toFixed(6)} ?`)) return;
+                performMoveCEC(movingCECGid, newLatLng.lat, newLatLng.lng);
+                return;
+            }
+        });
+
+        // --- MOVE CEC ---
+        function startMoveCEC(gid) {
+            map.closePopup();
+            if (measureMode) clearMeasure();
+            editMode = 'move';
+            movingCECGid = gid;
+            const cec = allCEC.find(c => c.gid === gid);
+            const name = cec ? cec.nom_cec : 'CEC';
+            const bar = document.getElementById('edit-mode-bar');
+            document.getElementById('edit-mode-text').innerHTML = `<i class="fas fa-arrows-alt"></i> Cliquez la nouvelle position pour <strong>${name}</strong>`;
+            bar.style.display = 'flex';
+            map.getContainer().style.cursor = 'crosshair';
+        }
+
+        async function performMoveCEC(gid, lat, lng) {
+            showLoading('Déplacement...');
+            const { error } = await db.from('national_cec')
+                .update({ geom: `SRID=4326;POINT(${lng} ${lat})` })
+                .eq('gid', gid);
+            hideLoading();
+            if (error) { alert('Erreur: ' + error.message); return; }
+            allCEC = await fetchAll('national_cec_view');
+            applyFiltersAndRender();
+            map.setView([lat, lng], map.getZoom() < 12 ? 14 : map.getZoom());
+            setTimeout(() => {
+                cecLayer.eachLayer(m => { if (m.cecData && m.cecData.gid === gid) m.openPopup(); });
+            }, 300);
+            alert('CEC déplacé avec succès !');
+        }
+
+        // --- EDIT CEC ---
+        function openEditCEC(gid) {
+            map.closePopup();
+            const cec = allCEC.find(c => c.gid === gid);
+            if (!cec) { alert('CEC introuvable.'); return; }
+            showCECModal('Modifier — ' + (cec.nom_cec || 'CEC'), cec, async (data, overlay) => {
+                if (!data.nom_cec || !data.type_cec || !data.region || !data.departement || !data.commune) {
+                    alert('Veuillez remplir tous les champs obligatoires (*).');
+                    return;
+                }
+                const updateData = {
+                    nom_cec: data.nom_cec,
+                    type_cec: data.type_cec,
+                    region: data.region,
+                    departement: data.departement,
+                    commune: data.commune,
+                    num_ima: data.num_ima || null,
+                    code_cec: data.code_cec || null,
+                    ref_cog: data.ref_cog || null,
+                    date: data.date || null,
+                    new_cec: data.new_cec || null,
+                    obs_req: data.obs_req || null
+                };
+                showLoading('Mise à jour...');
+                const { error } = await db.from('national_cec').update(updateData).eq('gid', gid);
+                hideLoading();
+                if (error) { alert('Erreur: ' + error.message); return; }
+                overlay.remove();
+                allCEC = await fetchAll('national_cec_view');
+                applyFiltersAndRender();
+                setTimeout(() => {
+                    cecLayer.eachLayer(m => { if (m.cecData && m.cecData.gid === gid) m.openPopup(); });
+                }, 300);
+                alert('CEC mis à jour avec succès !');
+            });
+        }
 
         // ===== INIT =====
         if (window.innerWidth <= 768) {
