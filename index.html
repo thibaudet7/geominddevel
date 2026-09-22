@@ -332,6 +332,44 @@
         .popup-actions .btn-move:hover { background: #42A5F5; }
         .popup-actions .btn-delete { background: #d32f2f; color: white; }
         .popup-actions .btn-delete:hover { background: #ef5350; }
+
+        #auth-btn {
+            background: none; border: 2px solid white; color: white;
+            padding: 5px 12px; border-radius: 4px; cursor: pointer;
+            font-size: 11px; font-weight: 600; display: flex; align-items: center; gap: 5px;
+        }
+        #auth-btn:hover { background: rgba(255,255,255,0.15); }
+        #auth-btn.logged-in { border-color: #4CAF50; background: rgba(76,175,80,0.2); }
+
+        .login-modal-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.6); display: flex;
+            align-items: center; justify-content: center; z-index: 10000;
+        }
+        .login-modal {
+            background: #fff; border-radius: 10px; padding: 25px; width: 340px;
+            max-width: 95vw; box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        }
+        .login-modal h3 {
+            color: #1a5632; margin-bottom: 15px; font-size: 16px;
+            border-bottom: 2px solid #4CAF50; padding-bottom: 8px;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .login-modal .form-row { margin-bottom: 12px; }
+        .login-modal .form-row label {
+            display: block; font-size: 11px; font-weight: 600;
+            color: #555; margin-bottom: 4px;
+        }
+        .login-modal .form-row input {
+            width: 100%; padding: 8px 10px; border: 1px solid #ccc;
+            border-radius: 4px; font-size: 13px; font-family: inherit;
+        }
+        .login-modal .form-row input:focus { outline: none; border-color: #4CAF50; }
+        .login-modal .login-actions { display: flex; gap: 10px; margin-top: 18px; }
+        .login-modal .login-actions .btn { flex: 1; padding: 9px; font-size: 12px; }
+        .login-modal .login-error {
+            color: #d32f2f; font-size: 11px; margin-top: 8px; display: none;
+        }
     </style>
 </head>
 <body>
@@ -342,6 +380,7 @@
         </div>
         <div class="header-right">
             <span id="loading-status"></span>
+            <button id="auth-btn" onclick="handleAuth()" title="Connexion administrateur"><i class="fas fa-lock"></i> <span id="auth-label">Connexion</span></button>
             <button id="refresh-btn" onclick="location.reload()" title="Rafraîchir"><i class="fas fa-sync-alt"></i></button>
             <button id="toggle-sidebar-btn" onclick="document.getElementById('sidebar').classList.toggle('collapsed')"><i class="fas fa-bars"></i></button>
         </div>
@@ -394,8 +433,10 @@
                 <label><input type="checkbox" id="toggle-cec" checked onchange="toggleLayer('cec')"> Centres d'État Civil</label>
             </div>
 
-            <h2><i class="fas fa-edit"></i> Gestion CEC</h2>
-            <button class="btn btn-primary" onclick="startAddCEC()"><i class="fas fa-plus-circle"></i> Ajouter un CEC</button>
+            <div id="admin-section" style="display:none;">
+                <h2><i class="fas fa-edit"></i> Gestion CEC</h2>
+                <button class="btn btn-primary" onclick="startAddCEC()"><i class="fas fa-plus-circle"></i> Ajouter un CEC</button>
+            </div>
 
             <h2><i class="fas fa-location-crosshairs"></i> Géolocalisation</h2>
             <button class="btn btn-primary" onclick="getUserLocation()"><i class="fas fa-crosshairs"></i> Ma position GPS</button>
@@ -460,6 +501,96 @@
         const SUPABASE_URL = 'https://hrlufnjhwhgddxkpyzst.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhybHVmbmpod2hnZGR4a3B5enN0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI3MzIwMzcsImV4cCI6MjA2ODMwODAzN30.0gMYonFDAU84i3boEIKZDK4OQhDrAXXJySGDa80wTZ8';
         const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // ===== AUTH =====
+        let isAdmin = false;
+
+        async function checkSession() {
+            const { data: { session } } = await db.auth.getSession();
+            setAdminState(!!session);
+        }
+
+        function setAdminState(logged) {
+            isAdmin = logged;
+            const btn = document.getElementById('auth-btn');
+            const label = document.getElementById('auth-label');
+            const section = document.getElementById('admin-section');
+            if (logged) {
+                btn.classList.add('logged-in');
+                label.textContent = 'Déconnexion';
+                btn.querySelector('i').className = 'fas fa-unlock';
+                section.style.display = '';
+            } else {
+                btn.classList.remove('logged-in');
+                label.textContent = 'Connexion';
+                btn.querySelector('i').className = 'fas fa-lock';
+                section.style.display = 'none';
+            }
+            if (typeof applyFiltersAndRender === 'function') applyFiltersAndRender();
+        }
+
+        async function handleAuth() {
+            if (isAdmin) {
+                await db.auth.signOut();
+                setAdminState(false);
+                return;
+            }
+            showLoginModal();
+        }
+
+        function showLoginModal() {
+            const overlay = document.createElement('div');
+            overlay.className = 'login-modal-overlay';
+            overlay.innerHTML = `
+                <div class="login-modal">
+                    <h3><i class="fas fa-user-shield"></i> Connexion Administrateur</h3>
+                    <div class="form-row">
+                        <label>Email</label>
+                        <input type="email" id="login-email" placeholder="admin@email.com" autocomplete="email">
+                    </div>
+                    <div class="form-row">
+                        <label>Mot de passe</label>
+                        <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password">
+                    </div>
+                    <div class="login-error" id="login-error"></div>
+                    <div class="login-actions">
+                        <button class="btn btn-danger" onclick="this.closest('.login-modal-overlay').remove()">Annuler</button>
+                        <button class="btn btn-primary" id="login-submit-btn" onclick="submitLogin(this.closest('.login-modal-overlay'))"><i class="fas fa-sign-in-alt"></i> Se connecter</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+            overlay.querySelector('#login-email').focus();
+            overlay.querySelector('#login-password').addEventListener('keydown', e => {
+                if (e.key === 'Enter') submitLogin(overlay);
+            });
+        }
+
+        async function submitLogin(overlay) {
+            const email = overlay.querySelector('#login-email').value.trim();
+            const password = overlay.querySelector('#login-password').value;
+            const errEl = overlay.querySelector('#login-error');
+            if (!email || !password) {
+                errEl.textContent = 'Veuillez remplir tous les champs.';
+                errEl.style.display = 'block';
+                return;
+            }
+            const btn = overlay.querySelector('#login-submit-btn');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Connexion...';
+            const { error } = await db.auth.signInWithPassword({ email, password });
+            if (error) {
+                errEl.textContent = 'Email ou mot de passe incorrect.';
+                errEl.style.display = 'block';
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Se connecter';
+                return;
+            }
+            overlay.remove();
+            setAdminState(true);
+        }
+
+        checkSession();
 
         // ===== MAP =====
         const map = L.map('map', { zoomControl: true }).setView([7.37, 12.35], 6);
@@ -661,11 +792,11 @@
                             <tr><td>Observations</td><td>${cec.obs_req || '—'}</td></tr>
                             <tr><td>Date</td><td>${cec.date || '—'}</td></tr>
                         </table>
-                        <div class="popup-actions">
+                        ${isAdmin ? `<div class="popup-actions">
                             <button class="btn-edit" onclick="openEditCEC(${cec.gid})"><i class="fas fa-pen"></i> Modifier</button>
                             <button class="btn-move" onclick="startMoveCEC(${cec.gid})"><i class="fas fa-arrows-alt"></i> Déplacer</button>
                             <button class="btn-delete" onclick="deleteCEC(${cec.gid})"><i class="fas fa-trash"></i> Supprimer</button>
-                        </div>
+                        </div>` : ''}
                     </div>
                 `);
                 cecLayer.addLayer(marker);
@@ -1224,6 +1355,7 @@
         let pendingAddLatLng = null;
 
         function startAddCEC() {
+            if (!isAdmin) { alert('Vous devez être connecté en tant qu\'administrateur.'); return; }
             if (measureMode) clearMeasure();
             editMode = 'add';
             pendingAddLatLng = null;
@@ -1317,6 +1449,7 @@
 
         // --- MOVE CEC ---
         function startMoveCEC(gid) {
+            if (!isAdmin) { alert('Vous devez être connecté en tant qu\'administrateur.'); return; }
             map.closePopup();
             if (measureMode) clearMeasure();
             editMode = 'move';
@@ -1348,6 +1481,7 @@
 
         // --- EDIT CEC ---
         function openEditCEC(gid) {
+            if (!isAdmin) { alert('Vous devez être connecté en tant qu\'administrateur.'); return; }
             map.closePopup();
             const cec = allCEC.find(c => c.gid === gid);
             if (!cec) { alert('CEC introuvable.'); return; }
@@ -1385,6 +1519,7 @@
 
         // --- DELETE CEC ---
         async function deleteCEC(gid) {
+            if (!isAdmin) { alert('Vous devez être connecté en tant qu\'administrateur.'); return; }
             const cec = allCEC.find(c => c.gid === gid);
             if (!cec) { alert('CEC introuvable.'); return; }
             if (!confirm(`Supprimer le CEC « ${cec.nom_cec} » (${cec.commune}) ?\n\nCette action est irréversible.`)) return;
